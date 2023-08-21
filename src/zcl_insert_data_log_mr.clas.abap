@@ -11,7 +11,9 @@ ENDCLASS.
 
 
 
-CLASS zcl_insert_data_log_mr IMPLEMENTATION.
+CLASS ZCL_INSERT_DATA_LOG_MR IMPLEMENTATION.
+
+
     METHOD if_oo_adt_classrun~main.
         DATA: lt_travel   TYPE TABLE OF ztravel_log_mr,
               lt_booking  TYPE TABLE OF zbooking_log_mr,
