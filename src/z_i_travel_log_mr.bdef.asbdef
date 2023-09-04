@@ -13,7 +13,7 @@ etag master last_changed_at
   // mandatory fields that are required to create a travel
   field (mandatory) agency_id, overall_status, booking_fee, currency_code;
   //dynamic field control
-  field (features : instance) travel_id;
+  field (features : instance) travel_id, overall_status;
 
   create;
   update;
@@ -21,8 +21,8 @@ etag master last_changed_at
 
   //validations
   validation validateCustomer on save { field customer_id; }
-  validation validateDates on save { field begin_date, end_date; }
-  validation validateStatus on save { field overall_status; }
+  validation validateDates    on save { field begin_date, end_date; }
+  validation validateStatus   on save { field overall_status; }
 
   //actions
   action (features : instance) acceptTravel result[1] $self;
