@@ -38,6 +38,23 @@ CLASS lhc_Travel IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_instance_authorizations.
+
+    DATA(lv_auth) = COND #( WHEN cl_abap_context_info=>get_user_technical_name(  ) EQ 'CB9980001395'
+                            THEN if_abap_behv=>auth-allowed
+                            ELSE if_abap_behv=>auth-unauthorized ).
+
+    LOOP AT keys ASSIGNING FIELD-SYMBOL(<ls_keys>).
+        APPEND INITIAL LINE TO result ASSIGNING FIELD-SYMBOL(<ls_result>).
+
+        <ls_result> = VALUE #( %key                           = <ls_keys>-%key
+                               %op-%update                    = lv_auth
+                               %delete                        = lv_auth
+                               %action-acceptTravel           = lv_auth
+                               %action-rejectTravel           = lv_auth
+                               %action-createTravelByTemplate = lv_auth
+                               %assoc-_Booking                = lv_auth ).
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD acceptTravel.
@@ -72,6 +89,15 @@ CLASS lhc_Travel IMPLEMENTATION.
     result = VALUE #( FOR ls_travel IN lt_travel ( travel_id = ls_travel-travel_id
                                                    %param    = ls_travel ) ).
 
+    LOOP AT lt_travel ASSIGNING FIELD-SYMBOL(<ls_travel>).
+      DATA(lv_travel_msg) = | { <ls_travel>-travel_id ALPHA = OUT }|.
+      APPEND VALUE #( travel_id = <ls_travel>-travel_id
+                      %msg      = new_message( id        = 'Z_MC_TRAVEL_LOG_MR'
+                                               number    = 005
+                                               v1        = lv_travel_msg
+                                               severity  = if_abap_behv_message=>severity-success )
+                      %element-customer_id = if_abap_behv=>mk-on ) TO reported-travel.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD createTravelByTemplate.
@@ -180,9 +206,20 @@ CLASS lhc_Travel IMPLEMENTATION.
     result = VALUE #( FOR ls_travel IN lt_travel ( travel_id = ls_travel-travel_id
                                                    %param    = ls_travel ) ).
 
+    LOOP AT lt_travel ASSIGNING FIELD-SYMBOL(<ls_travel>).
+      DATA(lv_travel_msg) = | { <ls_travel>-travel_id ALPHA = OUT }|.
+      APPEND VALUE #( travel_id = <ls_travel>-travel_id
+                      %msg      = new_message( id        = 'Z_MC_TRAVEL_LOG_MR'
+                                               number    = 006
+                                               v1        = lv_travel_msg
+                                               severity  = if_abap_behv_message=>severity-success )
+                      %element-customer_id = if_abap_behv=>mk-on ) TO reported-travel.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD validateCustomer.
+
+    DATA lt_customer TYPE SORTED TABLE OF /dmo/customer WITH UNIQUE KEY customer_id.
 
     " se leen los customer_id de la entidad
     READ ENTITIES OF z_i_travel_log_mr IN LOCAL MODE
@@ -190,8 +227,6 @@ CLASS lhc_Travel IMPLEMENTATION.
         FIELDS ( customer_id )
         WITH CORRESPONDING #( keys )
         RESULT DATA(lt_travel).
-
-    DATA lt_customer TYPE SORTED TABLE OF /dmo/customer WITH UNIQUE KEY customer_id.
 
     " se mueven los customer_id a una tabla ordenada y se eliminan duplicados
     lt_customer = CORRESPONDING #( lt_travel DISCARDING DUPLICATES MAPPING customer_id = customer_id EXCEPT * ).
@@ -210,11 +245,12 @@ CLASS lhc_Travel IMPLEMENTATION.
 
         APPEND VALUE #( travel_id = <ls_travel>-travel_id ) TO failed-travel.
 
+        DATA(lv_customer_id)  = | { <ls_travel>-customer_id ALPHA = IN }|.
         APPEND VALUE #( travel_id = <ls_travel>-travel_id
-                        %msg      = new_message( id = 'Z_MC_TRAVEL_LOG_MR'
-                        number    = 001
-                        v1        = <ls_travel>-travel_id
-                        severity  = if_abap_behv_message=>severity-error )
+                        %msg      = new_message( id        = 'Z_MC_TRAVEL_LOG_MR'
+                                                 number    = 001
+                                                 v1        = lv_customer_id
+                                                 severity  = if_abap_behv_message=>severity-error )
                         %element-customer_id = if_abap_behv=>mk-on ) TO reported-travel.
       ENDIF.
     ENDLOOP.
@@ -222,9 +258,68 @@ CLASS lhc_Travel IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD validateDates.
+
+    " se leen los customer_id de la entidad
+    READ ENTITY z_i_travel_log_mr\\Travel
+        FIELDS ( begin_date end_date )
+        WITH VALUE #( FOR <row_key> IN keys ( %key = <row_key>-%key ) )
+        RESULT DATA(lt_travel_result).
+
+    LOOP AT lt_travel_result INTO DATA(ls_travel_result).
+      IF ls_travel_result-end_date LT ls_travel_result-begin_date.
+        APPEND VALUE #( %key      = ls_travel_result-%key
+                        travel_id = ls_travel_result-travel_id ) TO failed-travel.
+
+        APPEND VALUE #( travel_id = ls_travel_result-travel_id
+                        %msg      = new_message( id        = 'Z_MC_TRAVEL_LOG_MR'
+                                                 number    = 004
+                                                 v1        = ls_travel_result-begin_date
+                                                 v2        = ls_travel_result-end_date
+                                                 v3        = ls_travel_result-travel_id
+                                                 severity  = if_abap_behv_message=>severity-error )
+                      %element-begin_date = if_abap_behv=>mk-on
+                      %element-end_date   = if_abap_behv=>mk-on ) TO reported-travel.
+
+      ELSEIF ls_travel_result-begin_date LT cl_abap_context_info=>get_system_date(  ).
+
+        APPEND VALUE #( %key      = ls_travel_result-%key
+                        travel_id = ls_travel_result-travel_id ) TO failed-travel.
+
+        APPEND VALUE #( %key = ls_travel_result-%key
+                        %msg = new_message( id        = 'Z_MC_TRAVEL_LOG_MR'
+                                            number    = 002
+                                            v1        = ls_travel_result-begin_date
+                                            severity  = if_abap_behv_message=>severity-error )
+                      %element-begin_date = if_abap_behv=>mk-on
+                      %element-end_date   = if_abap_behv=>mk-on ) TO reported-travel.
+      ENDIF.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD validateStatus.
+
+    READ ENTITY z_i_travel_log_mr\\Travel
+        FIELDS ( overall_status )
+        WITH VALUE #( FOR <row_key> IN keys ( %key = <row_key>-%key ) )
+        RESULT DATA(lt_travel_result).
+
+    LOOP AT lt_travel_result INTO DATA(ls_travel_result).
+      CASE ls_travel_result-overall_status.
+        WHEN 'O'. "Open
+        WHEN 'X'. "Cancelled
+        WHEN 'A'. "Accepted
+        WHEN OTHERS.
+          APPEND VALUE #( %key = ls_travel_result-%key ) TO failed-travel.
+
+          APPEND VALUE #( %key = ls_travel_result-%key
+                          %msg = new_message( id        = 'Z_MC_TRAVEL_LOG_MR'
+                                              number    = 003
+                                              v1        = ls_travel_result-overall_status
+                                              severity  = if_abap_behv_message=>severity-error )
+                        %element-overall_status = if_abap_behv=>mk-on ) TO reported-travel.
+      ENDCASE.
+    ENDLOOP.
   ENDMETHOD.
 
 ENDCLASS.

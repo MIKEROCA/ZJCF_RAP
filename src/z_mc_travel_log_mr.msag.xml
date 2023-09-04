@@ -32,6 +32,18 @@
      <MSGNR>004</MSGNR>
      <TEXT>Begin date &amp;1 must not be after en date &amp;2 for travel &amp;3</TEXT>
     </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>Z_MC_TRAVEL_LOG_MR</ARBGB>
+     <MSGNR>005</MSGNR>
+     <TEXT>Travel &amp;1 Accepted</TEXT>
+    </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>Z_MC_TRAVEL_LOG_MR</ARBGB>
+     <MSGNR>006</MSGNR>
+     <TEXT>Travel &amp;1 Rejected</TEXT>
+    </T100>
    </T100>
   </asx:values>
  </asx:abap>
