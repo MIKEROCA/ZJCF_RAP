@@ -44,6 +44,12 @@
      <MSGNR>006</MSGNR>
      <TEXT>Travel &amp;1 Rejected</TEXT>
     </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>Z_MC_TRAVEL_LOG_MR</ARBGB>
+     <MSGNR>007</MSGNR>
+     <TEXT>Status not valid for Booking &amp;1</TEXT>
+    </T100>
    </T100>
   </asx:values>
  </asx:abap>

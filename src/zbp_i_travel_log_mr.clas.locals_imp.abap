@@ -28,6 +28,7 @@ CLASS lhc_Travel IMPLEMENTATION.
                         %key                  = ls_travel-%key
                         %field-travel_id      = if_abap_behv=>fc-f-read_only
                         %field-overall_status = if_abap_behv=>fc-f-read_only
+                        %assoc-_Booking       = if_abap_behv=>fc-o-enabled
                         %action-acceptTravel  = COND #( WHEN ls_travel-overall_status = 'A'
                                                             THEN if_abap_behv=>fc-o-disabled
                                                             ELSE if_abap_behv=>fc-o-enabled )
@@ -44,15 +45,15 @@ CLASS lhc_Travel IMPLEMENTATION.
                             ELSE if_abap_behv=>auth-unauthorized ).
 
     LOOP AT keys ASSIGNING FIELD-SYMBOL(<ls_keys>).
-        APPEND INITIAL LINE TO result ASSIGNING FIELD-SYMBOL(<ls_result>).
+      APPEND INITIAL LINE TO result ASSIGNING FIELD-SYMBOL(<ls_result>).
 
-        <ls_result> = VALUE #( %key                           = <ls_keys>-%key
-                               %op-%update                    = lv_auth
-                               %delete                        = lv_auth
-                               %action-acceptTravel           = lv_auth
-                               %action-rejectTravel           = lv_auth
-                               %action-createTravelByTemplate = lv_auth
-                               %assoc-_Booking                = lv_auth ).
+      <ls_result> = VALUE #( %key                           = <ls_keys>-%key
+                             %op-%update                    = lv_auth
+                             %delete                        = lv_auth
+                             %action-acceptTravel           = lv_auth
+                             %action-rejectTravel           = lv_auth
+                             %action-createTravelByTemplate = lv_auth
+                             %assoc-_Booking                = lv_auth ).
     ENDLOOP.
 
   ENDMETHOD.
@@ -325,6 +326,12 @@ CLASS lhc_Travel IMPLEMENTATION.
 ENDCLASS.
 
 CLASS lsc_Z_I_TRAVEL_LOG_MR DEFINITION INHERITING FROM cl_abap_behavior_saver.
+
+  PUBLIC SECTION.
+    CONSTANTS: create TYPE string VALUE 'CREATE',
+               update TYPE string VALUE 'UPDATE',
+               delete TYPE string VALUE 'DELETE'.
+
   PROTECTED SECTION.
 
     METHODS save_modified REDEFINITION.
@@ -336,6 +343,73 @@ ENDCLASS.
 CLASS lsc_Z_I_TRAVEL_LOG_MR IMPLEMENTATION.
 
   METHOD save_modified.
+
+    DATA: lt_log_mr   TYPE STANDARD TABLE OF zlog_jcf_mr,
+          lt_log_mr_u TYPE STANDARD TABLE OF zlog_jcf_mr.
+
+    DATA(lv_user) = cl_abap_context_info=>get_user_technical_name(  ).
+
+    IF NOT create-travel IS INITIAL.
+      lt_log_mr = CORRESPONDING #( create-travel ).
+
+      LOOP AT lt_log_mr ASSIGNING FIELD-SYMBOL(<lfs_log_mr>).
+        GET TIME STAMP FIELD <lfs_log_mr>-created_at.
+        <lfs_log_mr>-changing_operation = lsc_Z_I_TRAVEL_LOG_MR=>create.
+
+        READ TABLE create-travel WITH TABLE KEY entity COMPONENTS travel_id = <lfs_log_mr>-travel_id INTO DATA(ls_travel).
+        IF sy-subrc EQ 0.
+          IF ls_travel-%control-booking_fee EQ cl_abap_behv=>flag_changed.
+            <lfs_log_mr>-changed_field_name = 'booking_fee'.
+            <lfs_log_mr>-changed_value      = ls_travel-booking_fee.
+            <lfs_log_mr>-user_mod           = lv_user.
+            TRY.
+                <lfs_log_mr>-change_id          = cl_system_uuid=>create_uuid_x16_static(  ).
+              CATCH cx_uuid_error.
+            ENDTRY.
+            APPEND <lfs_log_mr> TO lt_log_mr_u.
+          ENDIF.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+    IF NOT update-travel IS INITIAL.
+
+      lt_log_mr = CORRESPONDING #( update-travel ).
+
+      LOOP AT update-travel INTO DATA(ls_update_travel).
+        ASSIGN lt_log_mr[ travel_id = ls_update_travel-travel_id ] TO FIELD-SYMBOL(<lfs_travel_log_bd>).
+        GET TIME STAMP FIELD <lfs_travel_log_bd>-created_at.
+        <lfs_travel_log_bd>-changing_operation = lsc_Z_I_TRAVEL_LOG_MR=>update.
+        IF ls_update_travel-%control-customer_id EQ cl_abap_behv=>flag_changed.
+          <lfs_travel_log_bd>-changed_field_name = 'customer_id'.
+          <lfs_travel_log_bd>-changed_value      = ls_update_travel-customer_id.
+          <lfs_travel_log_bd>-user_mod           = lv_user.
+          TRY.
+              <lfs_travel_log_bd>-change_id      = cl_system_uuid=>create_uuid_x16_static(  ).
+            CATCH cx_uuid_error.
+          ENDTRY.
+          APPEND <lfs_travel_log_bd> TO lt_log_mr_u.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+    IF NOT delete-travel IS INITIAL.
+      lt_log_mr = CORRESPONDING #( delete-travel ).
+      LOOP AT lt_log_mr ASSIGNING FIELD-SYMBOL(<ls_del_travel>).
+        GET TIME STAMP FIELD <ls_del_travel>-created_at.
+        <ls_del_travel>-changing_operation = lsc_Z_I_TRAVEL_LOG_MR=>delete.
+        <ls_del_travel>-user_mod           = lv_user.
+        TRY.
+            <ls_del_travel>-change_id      = cl_system_uuid=>create_uuid_x16_static(  ).
+          CATCH cx_uuid_error.
+        ENDTRY.
+        APPEND <ls_del_travel> TO lt_log_mr_u.
+      ENDLOOP.
+    ENDIF.
+
+    IF NOT lt_log_mr_u IS INITIAL.
+      INSERT zlog_jcf_mr FROM TABLE @lt_log_mr_u.
+    ENDIF.
   ENDMETHOD.
 
   METHOD cleanup_finalize.

@@ -4,6 +4,7 @@ managed;
 define behavior for Z_I_TRAVEL_LOG_MR alias Travel
 implementation in class zbp_i_travel_log_mr unique
 persistent table ztravel_log_mr
+with additional save
 lock master
 authorization master ( instance )
 etag master last_changed_at
@@ -11,72 +12,75 @@ etag master last_changed_at
   // administrative fields: read only
   field ( readonly ) last_changed_at, last_changed_by, created_at, created_by;
   // mandatory fields that are required to create a travel
-  field (mandatory) agency_id, overall_status, booking_fee, currency_code;
+  field ( mandatory : create ) travel_id, agency_id, overall_status, booking_fee, currency_code;
   //dynamic field control
-  field (features : instance) travel_id, overall_status;
+  field ( features : instance ) travel_id, overall_status;
 
   create;
   update;
   delete;
 
   //validations
-  validation validateCustomer on save { field customer_id; }
-  validation validateDates    on save { field begin_date, end_date; }
-  validation validateStatus   on save { field overall_status; }
+  validation validateCustomer on save { create; field customer_id; }
+  validation validateDates on save { create; field begin_date, end_date; }
+  validation validateStatus on save { create; field overall_status; }
 
   //actions
-  action (features : instance) acceptTravel result[1] $self;
-  action (features : instance) rejectTravel result[1] $self;
-  action createTravelByTemplate result[1] $self;
+  action ( features : instance ) acceptTravel result [1] $self;
+  action ( features : instance ) rejectTravel result [1] $self;
+  action createTravelByTemplate result [1] $self;
 
-  association _Booking { create; }
+  association _Booking { create ( features : instance ); }
 
-  mapping for ztravel_log_mr corresponding;
-}
+  mapping
+       for ztravel_log_mr corresponding;
+    }
 
-define behavior for Z_I_BOOKING_LOG_MR alias Booking
-implementation in class zbp_i_booking_log_mr unique
-persistent table zbooking_log_mr
-lock dependent by _Travel
-authorization dependent by _Travel
-etag master last_change_at
-{
-  // static fields control
-  field ( readonly ) travel_id;
-  field ( mandatory ) carrier_id, connection_id, flight_date, booking_status;
-  update;
-  delete;
+  define behavior for Z_I_BOOKING_LOG_MR alias Booking
+  implementation in class zbp_i_booking_log_mr unique
+  persistent table zbooking_log_mr
+  lock dependent by _Travel
+  authorization dependent by _Travel
+  etag master last_change_at
+  {
+    // static fields control
+    field ( readonly ) travel_id;
+    field ( mandatory : create ) booking_id, carrier_id, connection_id, flight_date, booking_status;
+    update;
+    delete;
 
-  //validations
-  validation validateStatus on save { field booking_status; }
+    //validations
+    validation validateStatus on save { create; field booking_status; }
 
-  //determinations
-  determination calculateTotalFlightPrice on modify { field flight_price, currency_code; }
+    //determinations
+    determination calculateTotalFlightPrice on modify { field flight_price, currency_code; }
 
 
-  association _Travel;
-  association _BookingSupplement { create; }
+    association _Travel;
+    association _BookingSupplement { create (features : instance); }
 
-  mapping for zbooking_log_mr corresponding;
-}
+    mapping
+         for zbooking_log_mr corresponding;
+      }
 
-define behavior for Z_I_BOOKSUPPL_LOG_MR alias Supplement
-implementation in class zbp_i_booksuppl_log_mr unique
-with unmanaged save
-lock dependent by _Travel
-authorization dependent by _Travel
-etag master last_changed_at
-{
-  field ( readonly ) travel_id, booking_id;
-  field ( mandatory ) supplement_id, price;
-  update;
-  delete;
+    define behavior for Z_I_BOOKSUPPL_LOG_MR alias Supplement
+    implementation in class zbp_i_booksuppl_log_mr unique
+    with unmanaged save
+    lock dependent by _Travel
+    authorization dependent by _Travel
+    etag master last_changed_at
+    {
+      field ( readonly ) travel_id, booking_id;
+      field ( mandatory : create ) supplement_id, price;
+      update;
+      delete;
 
-  //determinations
-  determination calculateTotalSupplPrice on modify { field price, currency; }
+      //determinations
+      determination calculateTotalSupplPrice on modify { field price, currency; }
 
-  association _Travel;
-  association _Booking;
+      association _Travel;
+      association _Booking;
 
-  mapping for zlog_jcf_mr corresponding;
-}
+      mapping
+           for zlog_jcf_mr corresponding;
+        }
